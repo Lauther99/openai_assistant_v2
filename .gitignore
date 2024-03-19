@@ -1,0 +1,15 @@
+venv
+src/settings/.env
+src/settings/__pycache__
+src/components/__pycache__
+src/components/chains/__pycache__
+src/components/llms/__pycache__
+src/db/helpers/__pycache__
+src/db/training/__pycache__
+src/tools/vanna/__pycache__
+src/utils/__pycache__
+
+src/assets/~$Summary_datos.xlsx
+src/assets/~$classifier_context.xlsx
+src/assets/~$Diccionario_datos.xlsx
+src/assets/~$Keywords_datos.xlsx
