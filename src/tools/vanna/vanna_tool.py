@@ -43,8 +43,12 @@ class VannaTool:
     def get_training_data(self) -> pd.DataFrame:
         return self.vn.get_training_data()
 
-    def generate_sql(self, q: str) -> str:
-        return self.vn.generate_sql(question=q)
+    def generate_sql(self, question: str) -> str:
+        q = f"{question}, use the names of columns given exclusively, do not hallucinate or create new ones."
+        return self.vn.generate_sql(q)
+    
+    def generate_summary(self, question: str, dataframe: pd.DataFrame) -> str:
+        return self.vn.generate_summary(question, dataframe)
 
     def feed_ddl(self, ddl: str):
         self.vn.train(ddl=ddl)

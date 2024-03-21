@@ -45,10 +45,10 @@ class Assistant:
 
     # def _get_memory_prompt(self):
     #     return self.memory.prompt
-
     def _get_current_messages(self):
         return self.memory.chat_memory.messages
 
+    # Chat management
     def add_user_message(self, message: str):
         self.memory.chat_memory.add_user_message(message)
 
@@ -61,6 +61,7 @@ class Assistant:
         )
         return summary
 
+    # Assistant Flow
     def get_request(self, summary: str) -> dict[str, str]:
         requirement_chain = RequirementChain(
             self.chain_llm, self.embeddings_llm, self.settings
@@ -75,25 +76,32 @@ class Assistant:
         res = keywords_chain.get_keywords(user_requirement)
         return res
 
-    def classify_request(self, user_request) -> str:
+    def simple_complex_filter(self, user_request) -> dict[str, any]:
         classify_chain = ClassifyChain(
             self.chain_llm, self.embeddings_llm, self.settings
         )
-        res = classify_chain.classify_request(user_request)
+        res = classify_chain.simple_complex_filter(user_request)
         return res
 
-    def greeting_response(self, user_request: str, last_user_message: str) -> str:
+    def complete_incomplete_filter(self, user_request: str, ddl: list[str]) -> dict[str, any]:
+        classify_chain = ClassifyChain(
+            self.chain_llm, self.embeddings_llm, self.settings
+        )
+        res = classify_chain.complete_incomplete_filter(user_request, ddl)
+        return res
+
+    def greeting_response(self, coversation_summary: str, user_message: str) -> str:
         greeting_chain = GreetingChain(
             self.chain_llm, self.embeddings_llm, self.settings
         )
-        res = greeting_chain.greeting_response(user_request, last_user_message)
+        res = greeting_chain.greeting_response(coversation_summary, user_message)
         return res
 
     def get_table_names(
         self,
         keywords_arr: list[str],
         score_threshold: float = 0.2,
-    ) -> list[str]:
+    ) -> dict[str, any]:
         collection = self.settings.chroma.get_context_col()
         results = collection.query(
             query_texts=keywords_arr,
@@ -102,28 +110,65 @@ class Assistant:
         )
 
         tables = set()
+        ddl = set()
         for distances, metadatas in zip(results["distances"], results["metadatas"]):
             for distance, metadata in zip(distances, metadatas):
                 if distance <= score_threshold:
                     tables.add(metadata["table_name"])
+                    ddl.add(metadata["ddl"])
 
-        return list(tables)
+        return {"tables": list(tables), "ddl": list(ddl)}
 
-    def get_answer_from_db(self, question: str) -> pd.DataFrame:
+    def ask_sql(self, question: str) -> dict[str:any]:
         tool = VannaTool(self.settings)
-        sql = tool.vn.generate_sql(question=question)
-        return tool.vn.run_sql(sql=sql)
+        sql = tool.generate_sql(question)
+        df = tool.run_sql(sql)
+        response = tool.generate_summary(sql, df)
+        return {"sql": sql, "dataframe": df, "response": response}
 
-    def get_complete_response(
-        self, user_request: str, context_dataframe: pd.DataFrame
-    ) -> str:
-        chain = CompleteRequestChain(self.chain_llm, self.settings)
-        return chain.get_complete_response(user_request, context_dataframe)
-    
-    def process_final_response(self, user_request: str, answer: str)-> dict[str, any]:
+    def filter_request(
+        self,
+        request_type: str,
+        user_request: str,
+        coversation_summary: str,
+        user_message: str,
+    ):
+        response = {
+            "sql": "",
+            "dataframe": [],
+            "response": "",
+        }
+
+        if request_type == "simple":
+            response["response"] = self.greeting_response(
+                coversation_summary, user_message
+            )
+        elif request_type == "complex-incomplete":
+            # keywords = assistant.get_keywords_from_requirement(user_request)
+            # tables = assistant.get_table_names(keywords)
+            # print(keywords)
+            # print(tables)
+            response["response"] = "No esta completa la pregunta"
+        elif request_type == "complex-complete":
+            df = self.ask_sql(user_request)
+
+            response["response"] = df["response"]
+            response["dataframe"].append(df["dataframe"])
+            response["sql"] = df["sql"]
+        else:
+            raise ValueError(f"Not support request type: {request_type}")
+
+        return response
+
+    def process_response(self, user_request: str, answer: str) -> dict[str, any]:
         chain = ProcessResponseChain(self.chain_llm, self.settings)
         return chain.process_final_response(user_request, answer)
-        
+
+    # def get_complete_response(
+    #     self, user_request: str, context_dataframe: pd.DataFrame
+    # ) -> str:
+    #     chain = CompleteRequestChain(self.chain_llm, self.settings)
+    #     return chain.get_complete_response(user_request, context_dataframe)
 
 
 class RequirementChain:
@@ -175,17 +220,18 @@ class KeywordsChain:
         self.settings = settings
 
     def get_prompt(self, user_requirement: str) -> str:
-        prompt = ""
+        prompt = self.settings.chain_templates.keywords_chain_template
         collection = self.settings.chroma.get_keywords_col(self.embedding_llm)
-        results = find_db_examples(query=user_requirement, collection=collection)
+        results = find_db_examples(
+            query=user_requirement, collection=collection, score_threshold=0.6
+        )
 
         for result in results:
             prompt += f"user_requirement: {result[0].page_content}\n"
             keywords = result[0].metadata["keywords"]
-            prompt += f"response: {keywords}\n\n"
+            prompt += f"response: {keywords}\n"
 
-        prompt += """user_requirement: '''{user_requirement}''' \nresponse:"""
-
+        prompt += """END OF EXAMPLES\n\nuser_requirement: '''{user_requirement}''' \nresponse:"""
         return prompt
 
     def get_keywords(self, user_requirement: str) -> list[str]:
@@ -209,7 +255,7 @@ class ClassifyChain:
         self.embedding_llm = embedding_llm
         self.settings = settings
 
-    def get_prompt(self, user_request: str) -> str:
+    def simple_complex_prompt(self, user_request: str) -> str:
         prompt = self.settings.chain_templates.classifier_chain_template
         collection_examples = ""
         collection = self.settings.chroma.get_classify_col(self.embedding_llm)
@@ -228,8 +274,18 @@ class ClassifyChain:
 
         return prompt
 
-    def classify_request(self, user_request: str) -> str:
-        prompt = self.get_prompt(user_request)
+    def complete_incomplete_prompt(self, user_request: str, ddl: list[str]) -> str:
+        prompt = self.settings.chain_templates.complex_classifier_chain_template
+
+        ddl_examples = ""
+        for code in ddl:
+            ddl_examples += f"{code}\n\n"
+
+        prompt = prompt.format(ddl_examples=ddl_examples, user_request="{user_request}")
+        return prompt
+
+    def simple_complex_filter(self, user_request: str) -> dict[str, any]:
+        prompt = self.simple_complex_prompt(user_request)
 
         llm_chain = LLMChain(
             llm=self.chain_llm,
@@ -245,6 +301,24 @@ class ClassifyChain:
         user_request = json.dumps(datos, indent=4)
         user_request = json.loads(user_request)
         return user_request
+
+    def complete_incomplete_filter(self, user_request: str, ddl: list[str]) -> dict[str, any]:
+        prompt = self.complete_incomplete_prompt(user_request, ddl)
+        print(prompt)
+        llm_chain = LLMChain(
+            llm=self.chain_llm,
+            verbose=False,
+            prompt=PromptTemplate.from_template(prompt),
+        )
+
+        response = llm_chain.invoke(input={"user_request": user_request})
+        # response = str(response["text"])
+        # lineas = response.strip().split("\n")
+        # pares = [linea.strip().split(": ", 1) for linea in lineas]
+        # datos = {clave.strip(): valor.strip() for clave, valor in pares}
+        # r = json.dumps(datos, indent=4)
+        # r = json.loads(user_request)
+        return response
 
 
 class GreetingChain:
@@ -299,7 +373,7 @@ class CompleteRequestChain:
             verbose=False,
             prompt=PromptTemplate.from_template(prompt),
         )
-        
+
         res = llm_chain.invoke(
             input={
                 "user_request": user_request,
@@ -333,15 +407,14 @@ class ProcessResponseChain:
                 "actual_answer": answer,
             }
         )
-        
-        res = str(res["text"]).replace('"', '')
+
+        res = str(res["text"]).replace('"', "")
         lineas = res.strip().split("\n")
         pares = [linea.strip().split(": ", 1) for linea in lineas]
         datos = {clave.strip(): valor.strip() for clave, valor in pares}
         res = json.dumps(datos, indent=4)
         res = json.loads(res)
         return res
-
 
 
 # chain = Assistant()

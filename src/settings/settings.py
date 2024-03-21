@@ -15,8 +15,10 @@ class Template:
     memory_template: str = """
         Progressively summarize the lines of conversation provided, adding onto the previous summary returning a new summary. 
         Be detailed with important information. 
-        Do not use information from the example this is just an example of what you have to do.
-        Do not hallucinate or try to predict the conversation, work exclusively with the new lines
+        Do not use information from the example in your answer.
+        Do not hallucinate or try to predict the conversation, work exclusively with the new lines.
+        Do not predict the next answer from AI in the conversation.
+        If summary and new lines are empty then return an empty summary.
         
         EXAMPLE
         Current summary:
@@ -27,7 +29,7 @@ class Template:
         AI: Thank you, the average temperature for the measurement system with Tag MS-125JJG is 25°C.
 
         New summary:
-        The human is greeting AI, then human is asking for the average temperature of a measurement and AI says that need the ID of the measurement system, and Human gives the Tag of the measurement system that is MS-125JJG instead of the ID and AI says that the average temperature of the measurement system is 25°C.
+        The human is greeting AI, then human is asking for the average temperature of a measurement and AI says that need the ID of the measurement system. Human gives the Tag of the measurement system that is MS-125JJG instead of the ID. AI says that the average temperature of the measurement system with Tag MS-125JJG is 25°C.
         END OF EXAMPLE
 
         Begin!
@@ -46,6 +48,41 @@ class Template:
         You have to aswer in JSON format, watch this this examples to get an idea:\n"""
     )
 
+    keywords_chain_template: str = (
+        '''
+        Your are an assistant and your job is to find keywords in the next 'user_requirement'.
+        The following context will help you to find this keywords:
+        CONTEXT:
+        Words related to platform, instalation, station. Refers to 'platform' keyword.
+        
+        Words related to fluid, fluid type, fluids, gas, oleo, water, liquid. Refers to 'fluid' keyword.
+        
+        Words related to measurement types, fiscal, apropriação, operacional, custódia y poços de produção. Refers to 'measurement types' keyword.
+        
+        Words related to reception point, delivery point, measurement point, metering system. Refers to 'measurement system' keyword.
+        
+        Words related to data types. Refers to 'data types' keyword.
+        
+        Words related to point types. Refers to 'point types' keyword.
+        
+        Words related to computer types, flow computer brand, brand, manufacturer. Refers to 'computer type' keyword.
+        
+        Words related to firmware, equipment configuration, revision. Refers to 'firmware' keyword.
+        
+        Words related to modbus map, modbus, data structure. Refers to 'modbus map' keyword.
+        
+        Words related to computers, flow computers. Refers to 'flow computers' keyword.
+        
+        Words related to variable types, process variables. Refers to 'variables type' keyword.
+        
+        Words related to variables, static pressure, average flow, temperature, density, viscosity, volume. Refers to 'variables' keyword.
+        
+        END OF CONTEXT
+        
+        Also seeexamples to have an idea of how must be your answer:
+        EXAMPLES:
+        '''
+    )
     # classifier_chain_template: str = """
     # You are a classifier assistant. Follow this types to classify inputs:
     #     '''
@@ -67,14 +104,13 @@ class Template:
     # """
     
     classifier_chain_template: str = """
-    You are a classifier assistant. Follow this types to classify inputs:
+        You are a classifier assistant. Follow this types to classify inputs:
         '''
-        Type 1, simple: When the user request is simple to answer with the context below.
-        Type 2, complex-incomplete: When you detect the input is too general/incomplete/ambiguous and you can not answer with the context below.
-        Type 3, complex-complete: When input is completely detailed request and you can not answer with the context below.
+        simple: When the user request is simple to answer by greeting or helping with the context below.
+        complex: When you detect the input can not be answer with the context below.
         '''
         <Context>
-        Your name is M-Assistant.
+        Your name is M-Assistant. Your are an assistant to greet and help people with the next:
         If the user asks you what you can do, then offer your help giving this list of suggestions:
         "List of measurement systems"
         "List of meters for a specific measurement system"
@@ -83,7 +119,7 @@ class Template:
         
         You might use the following format to answer:
         analysis: Your analysis for the input.
-        response: complex-incomplete/complete/incomplete
+        response: complex/simple
         
         Follow this examples:\n
         {examples}
@@ -93,7 +129,65 @@ class Template:
         Begin!
         input: {user_request}
     """
+    
+    complex_classifier_chain_template: str = """
+        Your are an assistant and your work is to classify the input to complete or incomplete.
+        
+        This request will query the next SQL DDL's
+        DDL's:
+        {ddl_examples}
+        END OF DDL's
+        
+        If request needs extra parameters to be answered mark it as incomplete.
+        Remember this DDL's are the tables that will be queried.
+        
+        Your response format should be as follows:
+        FORMAT:
+        request: actual user request
+        analysis: A brief analysis if the requirement is incomplete or complete for the db.
+        type: complete/incomplete
+        END OF FORMAT
+        
+        Begin!
+        request: '''{user_request}'''
+    """
+    # You must answer if the information in the user request is enough to be able to generate an SQL query for the Database. 
+    
+    # classifier_chain_template: str = """
+    # You are a classifier assistant. Follow this types to classify inputs:
+    #     '''
+    #     Type 1, simple: When the user request is simple to answer with the context below.
+    #     Type 2, complex-incomplete: When you detect the input is too general/incomplete/ambiguous and you can not answer with the context below.
+    #     Type 3, complex-complete: When input is completely detailed request and you can not answer with the context below.
+    #     '''
+    #     <Context>
+    #     Your name is M-Assistant.
+    #     If the user asks you what you can do, then offer your help giving this list of suggestions:
+    #     "List of measurement systems"
+    #     "List of meters for a specific measurement system"
+    #     "Average temperature for measuring system id/tag/measuring system name"
+    #     <End of the context>
+        
+    #     You might use the following format to answer:
+    #     analysis: Your analysis for the input.
+    #     response: complex-incomplete/complete/incomplete
+        
+    #     Follow this examples:\n
+    #     {examples}
+        
+    #     End of examples
+        
+    #     Begin!
+    #     input: {user_request}
+    # """
 
+    requirement_chain_template: str = (
+        """
+        You will have conversation summary between a human an AI. You have to find the last intention from the conversation summary.
+        Do not hallucinate or try to predict the intention in the conversation. Work exclusively with the summary information in triple simple quotes.
+        You have to aswer in JSON format, watch this this examples to get an idea:\n"""
+    )
+    
     greeting_chain_template: str = (
         """
         Your name is M-Assistant, you are an assistant who will receive and greet people.
@@ -122,32 +216,33 @@ class Template:
         END OF DATAFRAME
         
         
-        Do not try to answer by yourself, you must analyze the DataFrame and explain information in this to the user.
+        Do not try to answer by yourself, you must analyze the DataFrame and explain information in this to the user request.
+        Do not give a long explanation, be precise and brief.
         """
     )
     
     long_complete_request_chain_template: str = (
         """
-        Answer the following user request: '''{user_request}'''
-        You will have a part of the dataframe (10 examples) this is going to be your context:
-        
+        The next part of the a dataframe (10 examples) was retrieved from the database:
         DATAFRAME
         {context_dataframe}
         END OF DATAFRAME
+                
+        You have to give an answer to the following user request: '''{user_request}'''
         
-        
-        Just analyze the DataFrame and explain the columns, not the data inside just the columns.
+        If the user asks for a list, answer here is the list for ...
+        Just analyze the DataFrame and explain the columns if required, 
+        Do not analyze the data inside just the columns.
         Do not try to answer by yourself.
-        Do not give the dataframe in the response or any othr data inside the table like names, ids, etc. Because this context is a part of a large dataframe.
-        Do not add in your answer information about the 10 examples from the complete dataframe.
-        Do not add in your answer information about the dataframe example given above.
-        The total words in your answer must be in a range of 40 to 100 words.
+        Do not give the dataframe in the response or any other data inside the table like names, ids, etc.
+        Do not add information like "your are having 10 examples from the complete dataframe" in your answer.
+        Respect the range of total words in your answer, it must be in a range of 20 to 30 words.
         """
     )
     
     process_final_response_template: str = (
         """
-        You will be given a user input and the actual answer, you have to translate the answer to the language from the user input.
+        You will be given a user input and the actual answer, you have to translate the answer to the language from the user input. Do not  give more information.
         
         Give the final response in this format with "final_answer" as the key of a dictionary:
         '''

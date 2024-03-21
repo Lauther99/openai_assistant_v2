@@ -13,6 +13,7 @@ def read_excel_dictionary(excel_path: str, columnas: List[str]) -> Dict[str, Lis
         datos_fila = {
             "table_name": fila["Tabla"],
             "keywords": fila["Palabras clave"].split(","),
+            "ddl": fila["Codigo"],
         }
         data.append(datos_fila)
 
