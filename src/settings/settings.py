@@ -15,26 +15,14 @@ class Template:
     memory_template: str = """
         Progressively summarize the lines of conversation provided, adding onto the previous summary returning a new summary. 
         Be detailed with important information. 
-        Do not use information from the example in your answer.
         Do not hallucinate or try to predict the conversation, work exclusively with the new lines.
-        Do not predict the next answer from AI in the conversation.
         If summary and new lines are empty then return an empty summary.
-        
-        EXAMPLE
-        Current summary:
-        The human is greeting AI, then human is asking for the average temperature of a measurement and AI says that need the ID of the measurement system.
-        
-        New lines of conversation:
-        Human: I have a Tag, is MS-125JJG
-        AI: Thank you, the average temperature for the measurement system with Tag MS-125JJG is 25°C.
+        The new summary will have to answer the question: "What is the conversation about?"
 
-        New summary:
-        The human is greeting AI, then human is asking for the average temperature of a measurement and AI says that need the ID of the measurement system. Human gives the Tag of the measurement system that is MS-125JJG instead of the ID. AI says that the average temperature of the measurement system with Tag MS-125JJG is 25°C.
-        END OF EXAMPLE
 
         Begin!
         Current summary:
-        {summary}
+        {current_summary}
 
         New lines of conversation:
         {new_lines}

@@ -14,6 +14,7 @@ from langchain.memory import ConversationSummaryBufferMemory
 import uuid
 import json
 import pandas as pd
+from src.components.memory.memory import Memory
 
 
 class Assistant:
@@ -28,18 +29,19 @@ class Assistant:
             llm_type=self.settings.openai.embeddings_model
         )
 
-        self.memory = self._init_memory()
+        # self.memory = self._init_memory()
+        self.memory = Memory()
 
-    def _init_memory(self) -> ConversationSummaryBufferMemory:
-        conversation_id = self.conversation_id
-        memory_prompt = PromptTemplate(
-            input_variables=["summary", "new_lines"],
-            template=self.settings.chain_templates.memory_template,
-        )
-        memory = ConversationSummaryBufferMemory(
-            llm=self.chain_llm, prompt=memory_prompt
-        )
-        return memory
+    # def _init_memory(self) -> ConversationSummaryBufferMemory:
+    #     conversation_id = self.conversation_id
+    #     memory_prompt = PromptTemplate(
+    #         input_variables=["summary", "new_lines"],
+    #         template=self.settings.chain_templates.memory_template,
+    #     )
+    #     memory = ConversationSummaryBufferMemory(
+    #         llm=self.chain_llm, prompt=memory_prompt
+    #     )
+    #     return memory
 
     # def _get_conversation_id(self):
     #     return self.conversation_id
@@ -47,20 +49,25 @@ class Assistant:
     # def _get_memory_prompt(self):
     #     return self.memory.prompt
     def _get_current_messages(self):
-        return self.memory.chat_memory.messages
+        self.memory.get_current_messages()
+        # return self.memory.chat_memory.messages
 
     # Chat management
     def add_user_message(self, message: str):
-        self.memory.chat_memory.add_user_message(message)
+        # self.memory.chat_memory.add_user_message(message)
+        self.memory.add_user_message(message)
 
     def add_ai_message(self, message: str):
-        self.memory.chat_memory.add_ai_message(message)
+        # self.memory.chat_memory.add_ai_message(message)
+        self.memory.add_ai_message(message)
+        
 
     def get_memory_summary(self, existing_summary: str = ""):
-        summary = self.memory.predict_new_summary(
-            messages=self.memory.chat_memory.messages, existing_summary=existing_summary
-        )
-        return summary
+        # summary = self.memory.predict_new_summary(
+        #     messages=self.memory.chat_memory.messages, existing_summary=existing_summary
+        # )
+        # return summary
+        return self.memory.get_memory_summary(existing_summary)
 
     # Assistant Flow
     def get_request(self, summary: str) -> dict[str, str]:
