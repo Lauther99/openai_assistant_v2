@@ -103,23 +103,23 @@ class Template:
     #     input: {user_request}
     # """
     
-    classifier_chain_template: str = """
-        You are a classifier assistant. Follow this types to classify inputs:
-        '''
-        simple: When the user request is simple to answer by greeting or helping with the context below.
-        complex: When you detect the input can not be answer with the context below.
-        '''
-        <Context>
-        Your name is M-Assistant. Your are an assistant to greet and help people with the next:
-        If the user asks you what you can do, then offer your help giving this list of suggestions:
-        "List of measurement systems"
-        "List of meters for a specific measurement system"
-        "Average temperature for measuring system id/tag/measuring system name"
-        <End of the context>
+    simple_classifier_chain_template: str = """
+        Your name is M-Assistant. Your are an assistant to greet people.
+        There is a measurement system database, but you do not have access to this database.
+        The only thing you know is that, if you had access you could answer questions related to measurement systems, but you don't.
+        So if user is requesting is related to get information from this database it would be complex.
         
-        You might use the following format to answer:
+        Now, your task is to classify the request into one of the following categories: simple/complex
+        
+        simple: 
+        When the user request is simple to answer with greetings or something else not related to measurement systems database.
+        
+        complex: 
+        When the intent of user request is related to get from information from database. And this information is in a database that you have no access.
+
+        Use the following format to respond:
         analysis: Your analysis for the input.
-        response: complex/simple
+        type: complex/simple
         
         Follow this examples:\n
         {examples}
@@ -131,22 +131,22 @@ class Template:
     """
     
     complex_classifier_chain_template: str = """
-        Your are an assistant and your work is to classify the input to complete or incomplete.
+        Your name is M-Assistant.
+        Your task is to classify the request into one of the following categories: complete/incomplete.
         
-        This request will query the next SQL DDL's
-        DDL's:
-        {ddl_examples}
-        END OF DDL's
+        complete: 
+        When the request can be answered from the database with following table description, and ddl.
+        Enphasize on table foreign keys, if necessary then is incomplete. It doesn't matter if the request needs to be answered with large records numbers.
+        TABLES:
+        {tables_info}
+        END OF TABLES
         
-        If request needs extra parameters to be answered mark it as incomplete.
-        Remember this DDL's are the tables that will be queried.
-        
-        Your response format should be as follows:
-        FORMAT:
-        request: actual user request
-        analysis: A brief analysis if the requirement is incomplete or complete for the db.
+        incomplete: 
+        When there are missing parameters in request that are needed to query the database.
+         
+        Use the following format to respond:
+        analysis: A brief analysis why the request is complete/incomplete.
         type: complete/incomplete
-        END OF FORMAT
         
         Begin!
         request: '''{user_request}'''
@@ -183,8 +183,11 @@ class Template:
 
     requirement_chain_template: str = (
         """
-        You will have conversation summary between a human an AI. You have to find the last intention from the conversation summary.
-        Do not hallucinate or try to predict the intention in the conversation. Work exclusively with the summary information in triple simple quotes.
+        You will have conversation summary between a human an AI. 
+        You have to find the final intention from the conversation summary.
+        Do not hallucinate or try to predict the intention in the conversation. 
+        Work exclusively with the summary information in triple simple quotes.
+        Do not repeat the same summary or paraphrase it. Find the final intention that the user has in the conversation.
         You have to aswer in JSON format, watch this this examples to get an idea:\n"""
     )
     

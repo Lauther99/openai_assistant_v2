@@ -2,18 +2,19 @@ import pandas as pd
 from typing import List, Dict
 
 
-def read_excel_dictionary(excel_path: str, columnas: List[str]) -> Dict[str, List[str]]:
-    dataframe = pd.read_excel(excel_path, usecols=columnas)
+def read_excel_dictionary(excel_path: str) -> Dict[str, List[str]]:
+    dataframe = pd.read_excel(io=excel_path, sheet_name="Context")
     dataframe_sin_nan = dataframe.dropna()
 
     data = []
 
     # Itera sobre cada fila del DataFrame
-    for indice, fila in dataframe_sin_nan.iterrows():
+    for _, fila in dataframe_sin_nan.iterrows():
         datos_fila = {
-            "table_name": fila["Tabla"],
-            "keywords": fila["Palabras clave"].split(","),
-            "ddl": fila["Codigo"],
+            "table_name": fila["tables"],
+            "keywords": str(fila["keywords"]).split(","),
+            "ddl": fila["ddls"],
+            "description" : fila["descriptions"]
         }
         data.append(datos_fila)
 
