@@ -50,7 +50,7 @@ class Memory:
             return
         raise ValueError("Can not add AI message")
 
-    def get_memory_summary(self, existing_summary: str = ""):
+    def predict_summary(self, existing_summary: str = ""):
         prompt = self.settings.chain_templates.memory_template
 
         new_lines = ""

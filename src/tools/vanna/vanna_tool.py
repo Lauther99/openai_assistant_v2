@@ -57,7 +57,7 @@ class VannaTool:
         self.vn.train(question=question, sql=sql)
 
     def feed_documentation(self, documentation: str):
-        self.vn.train(ddl=documentation)
+        self.vn.train(documentation=documentation)
 
     def remove_all_data(self):
         training_data = self.get_training_data()

@@ -15,6 +15,8 @@ import uuid
 import json
 import pandas as pd
 from src.components.memory.memory import Memory
+from src.utils.parsers import txt_2_Json
+from src.components.memory import MEMORY_TYPES
 
 
 class Assistant:
@@ -28,53 +30,41 @@ class Assistant:
         self.embeddings_llm = self.llms.get_llm(
             llm_type=self.settings.openai.embeddings_model
         )
-
-        # self.memory = self._init_memory()
+        self.general_chain = LLMChain(
+            llm=self.chain_llm,
+            verbose=False,
+            prompt=PromptTemplate.from_template(
+                self.settings.chain_templates.general_chain_template
+            ),
+        )
         self.memory = Memory()
-
-    # def _init_memory(self) -> ConversationSummaryBufferMemory:
-    #     conversation_id = self.conversation_id
-    #     memory_prompt = PromptTemplate(
-    #         input_variables=["summary", "new_lines"],
-    #         template=self.settings.chain_templates.memory_template,
-    #     )
-    #     memory = ConversationSummaryBufferMemory(
-    #         llm=self.chain_llm, prompt=memory_prompt
-    #     )
-    #     return memory
-
-    # def _get_conversation_id(self):
-    #     return self.conversation_id
-
-    # def _get_memory_prompt(self):
-    #     return self.memory.prompt
-    def _get_current_messages(self):
-        self.memory.get_current_messages()
-        # return self.memory.chat_memory.messages
 
     # Chat management
     def add_user_message(self, message: str):
-        # self.memory.chat_memory.add_user_message(message)
         self.memory.add_user_message(message)
 
     def add_ai_message(self, message: str):
-        # self.memory.chat_memory.add_ai_message(message)
         self.memory.add_ai_message(message)
-        
 
-    def get_memory_summary(self, existing_summary: str = ""):
-        # summary = self.memory.predict_new_summary(
-        #     messages=self.memory.chat_memory.messages, existing_summary=existing_summary
-        # )
-        # return summary
-        return self.memory.get_memory_summary(existing_summary)
+    def predict_summary(self, existing_summary: str = ""):
+        self.summary = self.memory.predict_summary(existing_summary)
+        return self.summary
+
+    def get_current_messages(self):
+        return self.memory.get_current_messages()
 
     # Assistant Flow
-    def get_request(self, summary: str) -> dict[str, str]:
+    # def get_request(self, summary: str) -> dict[str, str]:
+    #     requirement_chain = RequirementChain(
+    #         self.general_chain, self.embeddings_llm, self.memory, self.settings
+    #     )
+    #     res = requirement_chain.get_request(summary)
+    #     return res
+    def get_request(self) -> dict[str, str]:
         requirement_chain = RequirementChain(
-            self.chain_llm, self.embeddings_llm, self.settings
+            self.general_chain, self.embeddings_llm, self.memory, self.settings
         )
-        res = requirement_chain.get_request(summary)
+        res = requirement_chain.get_request()
         return res
 
     def get_keywords_from_requirement(self, user_requirement: str) -> list[str]:
@@ -93,7 +83,7 @@ class Assistant:
         response = {}
 
         classify_chain = ClassifyChain(
-            self.chain_llm, self.embeddings_llm, self.settings
+            self.general_chain, self.embeddings_llm, self.settings, self.memory
         )
 
         request_type = classify_chain.simple_filter(user_request)
@@ -119,11 +109,10 @@ class Assistant:
             # response["analysis"] = str(complex_info["analysis"]).strip()
 
             df = self.ask_sql(user_request)
-            response["response"] = df
-            # response["response"] = df["response"]
-            # response["dataframe"] = df["dataframe"]
-            # response["sql"] = df["sql"]
-            
+            response["response"] = df["response"]
+            response["dataframe"] = df["dataframe"]
+            response["sql"] = df["sql"]
+
             # if complex_type == REQUEST_TYPES["complete"]:
             #     df = self.ask_sql(user_request)
             #     response["response"] = df["response"]
@@ -138,23 +127,6 @@ class Assistant:
             raise ValueError(f"Not support request type: {request_type}")
 
         return response
-
-    #############
-    # def simple_filter(self, user_request) -> dict[str, any]:
-    #     classify_chain = ClassifyChain(
-    #         self.chain_llm, self.embeddings_llm, self.settings
-    #     )
-    #     res = classify_chain.simple_filter(user_request)
-    #     return res
-
-    # def complex_filter(
-    #     self, user_request: str, data: list[tuple[str, str, str]]
-    # ) -> dict[str, any]:
-    #     classify_chain = ClassifyChain(
-    #         self.chain_llm, self.embeddings_llm, self.settings
-    #     )
-    #     res = classify_chain.complex_filter(user_request, data)
-    #     return res
 
     def get_related_data_tables(
         self,
@@ -184,98 +156,83 @@ class Assistant:
 
         return list(data)
 
-    def ask_sql(self, question: str) -> dict[str:any]:
+    def ask_sql(self, question: str, max_attempts: int = 3) -> dict[str, any]:
         response = {"sql": "", "dataframe": "", "response": ""}
         tool = VannaTool(self.settings)
         sql = tool.generate_sql(question)
         response["sql"] = sql
 
-        if sql != "No SELECT statement could be found in the SQL code":
-            df = tool.run_sql(sql)
-            summary = tool.generate_summary(sql, df)
-            response["dataframe"] = df
-            response["response"] = summary
+        attempts = 0
 
-        return response
-
-    def filter_request(
-        self,
-        request_type: str,
-        user_request: str,
-        coversation_summary: str,
-        user_message: str,
-    ):
-        response = {
-            "sql": "",
-            "dataframe": [],
-            "response": "",
-        }
-
-        if request_type == "simple":
-            response["response"] = self.greeting_response(
-                coversation_summary, user_message
-            )
-        elif request_type == "complex-incomplete":
-            # keywords = assistant.get_keywords_from_requirement(user_request)
-            # tables = assistant.get_table_names(keywords)
-            # print(keywords)
-            # print(tables)
-            response["response"] = "No esta completa la pregunta"
-        elif request_type == "complex-complete":
-            df = self.ask_sql(user_request)
-
-            response["response"] = df["response"]
-            response["dataframe"].append(df["dataframe"])
-            response["sql"] = df["sql"]
-        else:
-            raise ValueError(f"Not support request type: {request_type}")
+        while attempts < max_attempts:
+            try:
+                if sql != "No SELECT statement could be found in the SQL code":
+                    df = tool.run_sql(sql)
+                    summary = tool.generate_summary(sql, df)
+                    response["dataframe"] = df
+                    response["response"] = summary
+                    break  # Salir del bucle si no hay excepciones
+            except Exception as e:
+                attempts += 1
+                print(f"Error al ejecutar SQL, intento {attempts}: {e}")
 
         return response
 
     # Post process
     def process_response(self, user_request: str, answer: str) -> dict[str, any]:
-        chain = ProcessResponseChain(self.chain_llm, self.settings)
+        chain = ProcessResponseChain(self.general_chain, self.settings)
         return chain.process_final_response(user_request, answer)
 
 
 class RequirementChain:
     def __init__(
-        self, chain_llm: BaseOpenAI, embedding_llm: Embeddings, settings: Settings
+        self,
+        general_chain: LLMChain,
+        embedding_llm: Embeddings,
+        memory: Memory,
+        settings: Settings,
     ) -> None:
-        self.chain_llm = chain_llm
+        self.general_chain = general_chain
         self.embedding_llm = embedding_llm
         self.settings = settings
+        self.memory = memory
 
-    def get_prompt(self, summary: str) -> str:
+    # def get_prompt(self, summary: str) -> str:
+    #     prompt = self.settings.chain_templates.requirement_chain_template
+    #     collection = self.settings.chroma.get_summary_col(self.embedding_llm)
+    #     collection_examples = ""
+    #     results = find_db_examples(query=summary, collection=collection)
+
+    #     for _, result in enumerate(results):
+    #         collection_examples += f"summary: {result[0].page_content}\n"
+    #         request = result[0].metadata["request"]
+    #         collection_examples += f"request: {request}\n\n"
+
+    #     prompt = prompt.format(examples=collection_examples, summary=summary)
+
+    #     return prompt
+
+    def get_prompt(self) -> str:
         prompt = self.settings.chain_templates.requirement_chain_template
-        collection = self.settings.chroma.get_summary_col(self.embedding_llm)
-        results = find_db_examples(query=summary, collection=collection)
+        current_messages = self.memory.get_current_messages()
+        conversation = ""
 
-        for index, result in enumerate(results):
-            prompt += f"summary: {result[0].page_content}\n"
-            request = result[0].metadata["request"]
-            prompt += f"request: {request}\n\n"
+        for message in current_messages:
+            m = message["content"]
+            if message["type"] == MEMORY_TYPES["AI"]:
+                conversation += f"AI Message: {m}\n"
+            else:
+                conversation += f"Human Message: {m}\n"
 
-            if index == len(results) - 1:
-                prompt += """summary: '''{summary}''' \nrequest:"""
-
+        prompt = prompt.format(conversation=conversation)
         return prompt
 
-    def get_request(self, summary: str) -> dict[str, str]:
-        prompt = self.get_prompt(summary)
-        llm_chain = LLMChain(
-            llm=self.chain_llm,
-            verbose=False,
-            prompt=PromptTemplate.from_template(prompt),
-        )
+    def get_request(self) -> dict[str, str]:
+        p = self.get_prompt()
+        res = self.general_chain.invoke(input={"task": p})
+        response = txt_2_Json(str(res["text"]))
 
-        res = llm_chain.invoke(input={"summary": summary})
-
-        cadena = res["text"]
-        cadena_json = "{" + cadena + "}"
-        user_request = json.loads(cadena_json)
-
-        return user_request
+        return response
 
 
 class KeywordsChain:
@@ -316,11 +273,16 @@ class KeywordsChain:
 
 class ClassifyChain:
     def __init__(
-        self, chain_llm: BaseOpenAI, embedding_llm: Embeddings, settings: Settings
+        self,
+        general_chain: LLMChain,
+        embedding_llm: Embeddings,
+        settings: Settings,
+        memory: Memory,
     ) -> None:
-        self.chain_llm = chain_llm
+        self.general_chain = general_chain
         self.embedding_llm = embedding_llm
         self.settings = settings
+        self.memory = memory
 
     # Prompts
     def simple_filter_prompt(self, user_request: str) -> str:
@@ -336,13 +298,13 @@ class ClassifyChain:
             response = result[0].metadata["response"]
             collection_examples += f"type: {response}\n\n"
 
-        prompt = prompt.format(
-            examples=collection_examples, user_request="{user_request}"
-        )
+        prompt = prompt.format(examples=collection_examples, user_request=user_request)
 
         return prompt
 
-    def complex_filter_prompt(self, data: list[tuple[str, str, str]]) -> str:
+    def complex_filter_prompt(
+        self, data: list[tuple[str, str, str]], user_request: str
+    ) -> str:
         prompt = self.settings.chain_templates.complex_classifier_chain_template
         tables_info = ""
 
@@ -355,138 +317,68 @@ class ClassifyChain:
                 f"\nTable: {table_name}\nDescription: {description}\nDDL: {ddl}\n\n"
             )
 
-        prompt = prompt.format(tables_info=tables_info, user_request="{user_request}")
+        prompt = prompt.format(tables_info=tables_info, user_request=user_request)
         return prompt
 
-    def greeting_response_prompt(self) -> str:
-        return self.settings.chain_templates.greeting_chain_template
+    def greeting_response_prompt(self, message: str) -> str:
+        template = self.settings.chain_templates.greeting_chain_template
+        current_messages = self.memory.get_current_messages()
+        conversation = ""
 
-    def complex_complete_response_prompt(self, context_dataframe: pd.DataFrame) -> str:
-        if len(context_dataframe) < 10:
-            return self.settings.chain_templates.short_complete_request_chain_template
-        else:
-            return self.settings.chain_templates.long_complete_request_chain_template
+        for message in current_messages:
+            m = message["content"]
+            if message["type"] == MEMORY_TYPES["AI"]:
+                conversation += f"AI Message: {m}\n"
+            else:
+                conversation += f"Human Message: {m}\n"
+
+        prompt = template.format(conversation=conversation, user_message=message)
+        return prompt
 
     # Filters
     def simple_filter(self, user_request: str) -> dict[str, any]:
-        prompt = self.simple_filter_prompt(user_request)
+        p = self.simple_filter_prompt(user_request)
 
-        llm_chain = LLMChain(
-            llm=self.chain_llm,
-            verbose=False,
-            prompt=PromptTemplate.from_template(prompt),
-        )
-
-        response = llm_chain.invoke(input={"user_request": user_request})
-        response = str(response["text"])
-        lineas = response.strip().split("\n")
-        pares = [linea.strip().split(": ", 1) for linea in lineas]
-        datos = {clave.strip(): valor.strip() for clave, valor in pares}
-        user_request = json.dumps(datos, indent=4)
-        user_request = json.loads(user_request)
-        return user_request
+        res = self.general_chain.invoke(input={"task": p})
+        response = txt_2_Json(str(res["text"]))
+        return response
 
     def complex_filter(
         self, user_request: str, data: list[tuple[str, str, str]]
     ) -> dict[str, any]:
-        prompt = self.complex_filter_prompt(data)
-        print(prompt)
-        llm_chain = LLMChain(
-            llm=self.chain_llm,
-            verbose=False,
-            prompt=PromptTemplate.from_template(prompt),
-        )
+        p = self.complex_filter_prompt(data, user_request)
 
-        response = llm_chain.invoke(input={"user_request": user_request})
-        response = str(response["text"])
-        lineas = response.strip().split("\n")
-        pares = [linea.strip().split(": ", 1) for linea in lineas]
-        datos = {clave.strip(): valor.strip() for clave, valor in pares}
-        r = json.dumps(datos, indent=4)
-        r = json.loads(r)
-        return r
+        res = self.general_chain.invoke(input={"task": p})
+        response = txt_2_Json(str(res["text"]))
+
+        return response
 
     # Responses
-    def greeting_response(
-        self, coversation_summary: str, last_user_message: str
-    ) -> str:
-        prompt = self.greeting_response_prompt()
+    def greeting_response(self, last_user_message: str) -> str:
+        p = self.greeting_response_prompt(last_user_message)
 
-        llm_chain = LLMChain(
-            llm=self.chain_llm,
-            verbose=False,
-            prompt=PromptTemplate.from_template(prompt),
-        )
-
-        res = llm_chain.invoke(
-            input={
-                "coversation_summary": coversation_summary,
-                "user_message": last_user_message,
-            }
-        )
-        return res["text"]
-
-
-class CompleteRequestChain:
-    def __init__(self, chain_llm: BaseOpenAI, settings: Settings) -> None:
-        self.chain_llm = chain_llm
-        self.settings = settings
-
-    def get_prompt(self, context_dataframe: pd.DataFrame) -> str:
-        if len(context_dataframe) < 10:
-            return self.settings.chain_templates.short_complete_request_chain_template
-        else:
-            return self.settings.chain_templates.long_complete_request_chain_template
-
-    def get_complete_response(
-        self, user_request: str, context_dataframe: pd.DataFrame
-    ) -> str:
-        prompt = self.get_prompt(context_dataframe)
-
-        llm_chain = LLMChain(
-            llm=self.chain_llm,
-            verbose=False,
-            prompt=PromptTemplate.from_template(prompt),
-        )
-
-        res = llm_chain.invoke(
-            input={
-                "user_request": user_request,
-                "context_dataframe": context_dataframe.head(10),
-            }
-        )
-
+        res = self.general_chain.invoke(input={"task": p})
         return res["text"]
 
 
 class ProcessResponseChain:
-    def __init__(self, chain_llm: BaseOpenAI, settings: Settings) -> None:
-        self.chain_llm = chain_llm
+    def __init__(self, general_chain: LLMChain, settings: Settings) -> None:
+        self.general_chain = general_chain
         self.settings = settings
 
-    def get_prompt(self) -> str:
-        return self.settings.chain_templates.process_final_response_template
+    def get_translator_prompt(self, request: str, answer: str) -> str:
+        t = self.settings.chain_templates.translator_template
+        prompt = t.format(user_input=request, actual_answer=answer)
+        return prompt
+
+    def translate_answer(self, user_request: str, answer: str) -> str:
+        p = self.get_translator_prompt(user_request, answer)
+
+        res = self.general_chain.invoke(input={"task": p})
+        response = txt_2_Json(str(res["text"]))
+
+        return response
 
     def process_final_response(self, user_request: str, answer: str) -> dict[str, any]:
-        prompt = self.get_prompt()
-
-        llm_chain = LLMChain(
-            llm=self.chain_llm,
-            verbose=False,
-            prompt=PromptTemplate.from_template(prompt),
-        )
-
-        res = llm_chain.invoke(
-            input={
-                "user_input": user_request,
-                "actual_answer": answer,
-            }
-        )
-
-        res = str(res["text"]).replace('"', "")
-        lineas = res.strip().split("\n")
-        pares = [linea.strip().split(": ", 1) for linea in lineas]
-        datos = {clave.strip(): valor.strip() for clave, valor in pares}
-        res = json.dumps(datos, indent=4)
-        res = json.loads(res)
+        res = self.translate_answer(user_request, answer)
         return res

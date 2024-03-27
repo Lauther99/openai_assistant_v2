@@ -4,6 +4,7 @@ src/settings/__pycache__
 src/components/__pycache__
 src/components/chains/__pycache__
 src/components/llms/__pycache__
+src/components/memory/__pycache__
 src/db/helpers/__pycache__
 src/db/training/__pycache__
 src/tools/vanna/__pycache__
